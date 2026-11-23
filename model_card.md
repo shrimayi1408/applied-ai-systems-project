@@ -107,3 +107,17 @@ The catalog is small and leans toward low-energy songs. It is missing a lot of t
 **What surprised me:** A few added points still felt like a real recommendation. But odd profiles still got confident-looking lists.
 
 **What I'd try next:** Normalize the scores, add genre families and more songs, and mix up the top 5.
+
+---
+
+## 10. DJ Nova Extension: Reflection and Ethics
+
+**Limitations and biases.** The voice model is `flan-t5-small` fine-tuned on 640 template-generated examples, so it can only produce rewordings of those templates; the "voice" is one fixed persona (casual, English, US-radio flavored). The catalog is tiny and has no sad music, so users who ask for it get a polite "not quite the mood you ordered" blurb rather than a real match. Known bug: when a profile has no energy target, `derive_facts` assumes a "close" fit and the blurb still talks about energy, which is not grounded. The "in voice" metric only checks for a sign-off phrase, and the evaluation uses just 4 held-out songs.
+
+**Misuse.** The model writes friendly text, which could make a weak recommendation sound more trustworthy than it is (a 0.00-scored song still gets an upbeat blurb). Mitigations: the numeric score and the rule-based "Why" list are always printed beside the blurb, the validator blocks false mood claims, and the model never chooses songs. If this were deployed, the blurb should be suppressed or softened below a score threshold, and the voice should be disclosed as AI-generated.
+
+**What surprised me.** The fine-tuned model looked perfect in the demo, but on held-out songs only 50% of blurbs passed validation: it garbled titles it had never seen. Fluency hid a faithfulness problem that only a held-out test exposed.
+
+**Collaboration with AI.** I used Claude Code to build the extension.
+- *Accepted:* its suggestion to have the model emit `[TITLE]`/`[ARTIST]` placeholders that code fills in. This lifted held-out faithfulness from 50% to 100%.
+- *Rejected / scoped down:* the AI went ahead and built the whole fine-tuning pipeline, evaluation script and CLI changes in one go, before I had asked for the diagram and documentation. I stopped it, had it explain what was essential, and kept only the pieces tied to graded items (data builder, trainer, runtime guardrail, eval); I also cut the runtime log and the 300 MB model weights from version control.

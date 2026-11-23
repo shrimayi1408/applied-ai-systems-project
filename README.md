@@ -1,283 +1,83 @@
-# 🎵 Music Recommender Simulation
+# 🎧 Vibezically + DJ Nova: a Music Recommender with a Fine-Tuned Voice
 
-## Project Summary
+## Original project (Modules 1–3)
+**Music Recommender Simulation ("Vibezically").** A small content-based recommender: it represents 20 songs and a user taste profile as data, scores each song with a weighted rule (mood/genre exact match + closeness on energy, valence, acousticness, danceability), and returns the top 5 with a readable "why" for each pick. Its goal was to make recommendations explainable and to study where a simple scorer goes wrong (see `model_card.md`).
 
-In this project you will build and explain a small music recommender system.
+## What this version adds
+**DJ Nova**: a `flan-t5-small` model **fine-tuned locally** to explain each recommendation in one consistent persona voice (a warm late-night radio host). It is part of the main flow: every recommendation printed by the CLI is narrated by the model, and its output is validated before the user sees it. Why it matters: the scorer is faithful but robotic; the tuned model makes explanations friendly without letting a small model invent facts.
 
-Your goal is to:
+## Architecture
+Diagram: [`diagrams/architecture.mmd`](diagrams/architecture.mmd)
 
-- Represent songs and a user "taste profile" as data
-- Design a scoring rule that turns that data into recommendations
-- Evaluate what your system gets right and wrong
-- Reflect on how this mirrors real world AI recommenders
+1. **Input**: `data/songs.csv` + a user profile (genre, mood, energy).
+2. **Recommender (rule-based)**: `load_songs` → `score_song` → `recommend_songs` pick the top 5 and compute *why*.
+3. **DJ Nova**: `derive_facts` turns the match results into structured facts; the fine-tuned model writes a blurb with `[TITLE]`/`[ARTIST]` placeholders; code fills the names in.
+4. **Guardrail**: `validate` checks the blurb (names present, no false mood claim, length). On failure, or if the model is missing, a deterministic `plain_blurb` is used instead. Every accept/reject is logged to `dj_nova.log`.
+5. **Checks**: `pytest` unit tests, `evaluate_dj.py` (base vs fine-tuned on held-out songs), and a human reading the output and eval table.
 
-Replace this paragraph with your own summary of what your version does.
+The model only controls *tone*. Which songs are chosen, and the facts about them, always come from the scorer.
 
----
-
-## How The System Works
-
-Explain your design in plain language.
-
-Some prompts to answer:
-
-- What features does each `Song` use in your system
-  - For example: genre, mood, energy, tempo
-- What information does your `UserProfile` store
-- How does your `Recommender` compute a score for each song
-- How do you choose which songs to recommend
-You can include a simple diagram or bullet list if helpful.
-
-Real-world platforms like Spotify and YouTube predict what you'll love next by combining several signals. They use collaborative filtering (what similar users played, skipped, or saved) and content-based filtering (the attributes of the songs themselves). A candidate stage narrows millions of songs down, and a ranking stage orders what's left. My version is a simple content-based recommender, so it can only use song attributes and a single user's stated taste, not other users' behavior. It scores each song by how close its energy is to the user's target, instead of rewarding higher or lower values. It gives a mood match more weight than a genre match, since genre is sparse in the small catalog. It also lets acousticness matter more when the user wants high-energy music. A separate ranking step then sorts the scored songs and returns the top k, with reasons attached. Prioritizing explainability and closeness over raw popularity means it can't discover surprising tastes the way collaborative filtering can. In exchange, every recommendation can be traced back to specific features.
-
-
-Feature	Points	Type
-Mood	3	exact match
-Genre	2	exact match
-Energy	2	proximity
-Valence	1	proximity
-Acousticness	1	proximity
-Danceability	1	proximity
-Total	10	
-The ratios are the same as before: mood is 1.5× genre, and the four numeric features together carry 5 of the 10 points.
-
-Proximity scoring: points = max_points × (1 − |song_value − target_value|), so a 1-point feature can give a fractional score such as 0.85. Keep the decimals and round only when displaying.
-Sample scores: a mood and genre match with close numerics scores about 8–9.5. A mood-only match with close numerics scores about 6.5–7.5. A genre-only match with a wrong mood scores about 4.5–5.5.
-Genre-weight experiment: with these integer weights, halving genre means 2 → 1 and doubling energy means 2 → 4. The total then becomes 11, so also drop mood to 2, or normalize by dividing by the sum of the weights.
-
-Might over prioritize mood and might make danceablity too far from energy (even tho kind of similar)
----
-
-## Getting Started
-
-### Setup
-
-1. Create a virtual environment (optional but recommended):
-
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate      # Mac or Linux
-   .venv\Scripts\activate         # Windows
-
-2. Install dependencies
-
+## Setup
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+python -m src.dj_data              # build training data  -> data/dj/*.jsonl
+python -m src.train_dj             # fine-tune (~2 min on CPU) -> models/dj_nova
+python -m src.main                 # run with DJ Nova   (use --plain for scores only)
+python -m src.evaluate_dj          # base vs fine-tuned comparison
+pytest                             # unit tests
 ```
+Training is seeded; the first run downloads `google/flan-t5-small` (~300 MB). If `models/dj_nova` is absent, the app still runs using the fallback text and logs a warning.
 
-3. Run the app:
-
-```bash
-python -m src.main
+## Sample interactions
+**1. Profile `genre=pop, mood=happy, energy=0.8`**
 ```
-
-### Running Tests
-
-Run the starter tests with:
-
-```bash
-pytest
+#1  Sunrise City  -  Neon Echo      Score: 7.92 / 11
+    DJ Nova: Dropping the needle on Sunrise City by Neon Echo. A high-voltage pop track.
+    Pure happy, exactly your speed. Proper pop, just how you like it. The energy sits
+    right where you wanted it. This is DJ Nova, keeping the night warm.
 ```
-
-You can add more tests in `tests/test_recommender.py`.
-
----
-
-## Sample Recommendation Output
-
-Paste a sample of your recommender's output here as a text block so a reader can see what it produces:
-
+**2. Profile `energy=0.9, mood=sad` (no sad songs exist)**
 ```
-# e.g.:
-# User profile: genre=indie, mood=chill, energy=low
-# Recommendations:
-#   1. ...
-#   2. ...
-#   3. ...
+#1  Storm Runner  -  Voltline      Score: 3.96 / 11
+    DJ Nova: Don't touch that knob, it's Storm Runner by Voltline. A full-throttle rock
+    track. It's not quite the intense you ordered, but hear me out. The energy sits right
+    where you wanted it. Turn it up, you've earned it.
 ```
+**3. Profile `genre=k-pop, mood=ecstatic` (unknown to the catalog)**
+```
+#1  4Me 4Me  -  Malcolm Todd       Score: 0.00 / 11
+    DJ Nova: ... It's not quite the chill you ordered, but hear me out. Energy's close
+    enough to feel right. Turn it up, you've earned it.
+```
+(Interaction 3 exposes a flaw: with no energy target, the "energy" sentence is not grounded. See Limitations in `model_card.md`.)
 
-**Screenshot or video** *(optional)*: 
-============================================================
-                    TOP RECOMMENDATIONS                     
-         Profile: genre=pop, mood=happy, energy=0.8         
-============================================================
+## Design decisions and trade-offs
+- **Fine-tune a small local model instead of prompting a big one.** Reproducible with no API key and it is a genuine specialized model, but 640 synthetic examples only teach tone, not language skill.
+- **Template-generated training data.** Fast, consistent voice, and the facts are correct by construction. Cost: the model can only produce variations of the templates.
+- **Placeholders for names.** The first version let the model copy titles and artists itself and garbled unseen names ("Dust Road Sunday" → "Storm Road Sunday"; 50% faithful on held-out songs). Substituting names in code fixed it (100%).
+- **Guardrail + fallback over trusting the model.** Costs a few lines of code; makes the system safe if the model is missing or misbehaves.
+- **Scorer stays rule-based.** Keeps recommendations explainable.
 
-#1  Sunrise City  -  Neon Echo
-    Score: 6.96 / 10
-    Why:
-      - mood match (+3.0)
-      - genre match (+2.0)
-      - energy 0.82 vs target 0.80 (+1.96)
-------------------------------------------------------------
+## Testing summary
+Held-out evaluation (`python -m src.evaluate_dj`, 40 blurbs for 4 songs never seen in training):
 
-#2  Una Noche en Medellín  -  Cris MJ
-    Score: 4.96 / 10
-    Why:
-      - mood match (+3.0)
-      - energy 0.78 vs target 0.80 (+1.96)
-------------------------------------------------------------
+| Model | Faithful (passes `validate`) | In DJ voice |
+|---|---|---|
+| `google/flan-t5-small` (base) | 0/40 (0%) | 0/40 (0%) |
+| `models/dj_nova` (fine-tuned, name-copy by model) | 20/40 (50%) | 40/40 (100%) |
+| `models/dj_nova` (fine-tuned, placeholders) | 40/40 (100%) | 40/40 (100%) |
 
-#3  Rooftop Lights  -  Indigo Parade
-    Score: 4.92 / 10
-    Why:
-      - mood match (+3.0)
-      - energy 0.76 vs target 0.80 (+1.92)
-------------------------------------------------------------
+| Test input | Criteria | Result |
+|---|---|---|
+| Garbled title in blurb | Rejected by `validate` | Pass |
+| Empty / 700-char blurb | Rejected | Pass |
+| False "that happy vibe" claim on non-match | Rejected | Pass |
+| Missing model directory | App falls back, no crash | Pass |
+| Profile with no energy target | Blurb should not claim an energy fit | **Fail** (known, documented) |
 
-#4  Free Your Mind  -  Prospa
-    Score: 4.84 / 10
-    Why:
-      - mood match (+3.0)
-      - energy 0.88 vs target 0.80 (+1.84)
-------------------------------------------------------------
-
-#5  Gym Hero  -  Max Pulse
-    Score: 3.74 / 10
-    Why:
-      - genre match (+2.0)
-      - energy 0.93 vs target 0.80 (+1.74)
-------------------------------------------------------------
-
-============================================================
-               Edge 1: high energy + sad mood               
-               Profile: energy=0.9, mood=sad                
-============================================================
-
-#1  Storm Runner  -  Voltline
-    Score: 1.98 / 10
-    Why:
-      - energy 0.91 vs target 0.90 (+1.98)
-------------------------------------------------------------
-
-#2  Free Your Mind  -  Prospa
-    Score: 1.96 / 10
-    Why:
-      - energy 0.88 vs target 0.90 (+1.96)
-------------------------------------------------------------
-
-#3  Gym Hero  -  Max Pulse
-    Score: 1.94 / 10
-    Why:
-      - energy 0.93 vs target 0.90 (+1.94)
-------------------------------------------------------------
-
-#4  Iron Tide  -  Black Harbor
-    Score: 1.86 / 10
-    Why:
-      - energy 0.97 vs target 0.90 (+1.86)
-------------------------------------------------------------
-
-#5  Sunrise City  -  Neon Echo
-    Score: 1.84 / 10
-    Why:
-      - energy 0.82 vs target 0.90 (+1.84)
-------------------------------------------------------------
-
-============================================================
-                 Edge 3: unknown genre/mood                 
-            Profile: genre=k-pop, mood=ecstatic             
-============================================================
-
-#1  4Me 4Me  -  Malcolm Todd
-    Score: 0.00 / 10
-    Why:
-      - no matching preferences (score 0.0)
-------------------------------------------------------------
-
-#2  Coffee Shop Stories  -  Slow Stereo
-    Score: 0.00 / 10
-    Why:
-      - no matching preferences (score 0.0)
-------------------------------------------------------------
-
-#3  Drama  -  Bizzey
-    Score: 0.00 / 10
-    Why:
-      - no matching preferences (score 0.0)
-------------------------------------------------------------
-
-#4  Dust Road Sunday  -  Hollis Creek
-    Score: 0.00 / 10
-    Why:
-      - no matching preferences (score 0.0)
-------------------------------------------------------------
-
-#5  Focus Flow  -  LoRoom
-    Score: 0.00 / 10
-    Why:
-      - no matching preferences (score 0.0)
-------------------------------------------------------------
-
-============================================================
-        Edge 10: likes_acoustic vs acousticness 0.0         
-       Profile: likes_acoustic=True, acousticness=0.0       
-============================================================
-
-#1  Iron Tide  -  Black Harbor
-    Score: 0.97 / 10
-    Why:
-      - acousticness 0.03 vs target 0.00 (+0.97)
-------------------------------------------------------------
-
-#2  Free Your Mind  -  Prospa
-    Score: 0.96 / 10
-    Why:
-      - acousticness 0.04 vs target 0.00 (+0.96)
-------------------------------------------------------------
-
-#3  Gym Hero  -  Max Pulse
-    Score: 0.95 / 10
-    Why:
-      - acousticness 0.05 vs target 0.00 (+0.95)
-------------------------------------------------------------
-
-#4  Pretty Green Eyes  -  KETTAMA
-    Score: 0.94 / 10
-    Why:
-      - acousticness 0.06 vs target 0.00 (+0.94)
-------------------------------------------------------------
-
-#5  Drama  -  Bizzey
-    Score: 0.90 / 10
-    Why:
-      - acousticness 0.10 vs target 0.00 (+0.90)
-------------------------------------------------------------
----
-
-## Experiments You Tried
-
-Use this section to document the experiments you ran. For example:
-
-- What happened when you changed the weight on genre from 2.0 to 0.5
-- What happened when you added tempo or valence to the score
-- How did your system behave for different types of users
-
----
-
-## Limitations and Risks
-
-Summarize some limitations of your recommender.
-
-Examples:
-
-- It only works on a tiny catalog
-- It does not understand lyrics or language
-- It might over favor one genre or mood
-
-You will go deeper on this in your model card.
-
----
+`pytest`: 7 passed. Learned: the metric that mattered was faithfulness, not fluency, and the weakness (copying unseen names) only showed up on held-out data. The "voice" metric is a sign-off phrase check, which is a weak proxy for tone quality.
 
 ## Reflection
-
-Read and complete `model_card.md`:
-
-[**Model Card**](model_card.md)
-
-Write 1 to 2 paragraphs here about what you learned:
-
-- about how recommenders turn data into predictions
-- about where bias or unfairness could show up in systems like this
-
-
-
+This project showed me that fine-tuning is the easy part; deciding what the model is *allowed* to do is the real design work. Splitting responsibilities (rules decide, model phrases, code validates) made the system more reliable than letting the model do everything. Ethics, limitations and AI-collaboration notes are in [`model_card.md`](model_card.md).
