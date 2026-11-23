@@ -1,39 +1,43 @@
-classDiagram
-    class Song {
-        +int id
-        +str title
-        +str artist
-        +str genre
-        +str mood
-        +float energy
-        +float tempo_bpm
-        +float valence
-        +float danceability
-        +float acousticness
-    }
+flowchart LR
+    subgraph Input
+        CSV[(data/songs.csv)]
+        PROF[User profile<br/>genre, mood, energy]
+    end
 
-    class UserProfile {
-        +str favorite_genre
-        +str favorite_mood
-        +float target_energy
-        +bool likes_acoustic
-    }
+    subgraph Core["Recommender (rule-based)"]
+        LOAD[load_songs]
+        SCORE[score_song<br/>weighted match + proximity]
+        RANK[recommend_songs<br/>top-k + reasons]
+    end
 
-    class Recommender {
-        +List~Song~ songs
-        +__init__(songs) void
-        +recommend(user, k) List~Song~
-        +explain_recommendation(user, song) str
-    }
+    subgraph Voice["Fine-tuned model: DJ Nova"]
+        FACTS[derive_facts<br/>mood/genre match, energy fit]
+        MODEL[flan-t5-small<br/>fine-tuned on DJ-voice data]
+        FILL[fill_names<br/>code inserts title/artist]
+        GUARD{validate<br/>faithful and safe?}
+        FALL[plain_blurb fallback]
+    end
 
-    class RecommenderFunctions {
-        <<module>>
-        +load_songs(csv_path) List~Dict~
-        +score_song(user_prefs, song) Tuple
-        +recommend_songs(user_prefs, songs, k) List~Tuple~
-    }
+    OUT[CLI output:<br/>score + DJ blurb + reasons]
+    LOG[(dj_nova.log)]
 
-    Recommender "1" --> "*" Song : holds
-    Recommender ..> UserProfile : takes as input
-    RecommenderFunctions ..> Song : reads songs as dicts
-    RecommenderFunctions ..> UserProfile : reads prefs as dict
+    subgraph Checks["Testing and human review"]
+        TRAIN[train_dj.py<br/>data/dj/train.jsonl]
+        EVAL[evaluate_dj.py<br/>held-out songs, base vs tuned]
+        UNIT[pytest unit tests]
+        HUMAN([Human reads output<br/>and eval table])
+    end
+
+    CSV --> LOAD --> SCORE
+    PROF --> SCORE
+    SCORE --> RANK --> FACTS --> MODEL --> FILL --> GUARD
+    GUARD -- pass --> OUT
+    GUARD -- fail --> FALL --> OUT
+    GUARD -. logs accept/reject .-> LOG
+    TRAIN -. produces weights .-> MODEL
+    EVAL -. measures .-> MODEL
+    UNIT -. checks .-> GUARD
+    UNIT -. checks .-> SCORE
+    OUT --> HUMAN
+    EVAL --> HUMAN
+    LOG --> HUMAN
