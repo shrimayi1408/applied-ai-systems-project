@@ -59,3 +59,40 @@ def test_explain_recommendation_returns_non_empty_string():
     explanation = rec.explain_recommendation(user, song)
     assert isinstance(explanation, str)
     assert explanation.strip() != ""
+
+
+# ---- DJ Nova guardrail / scoring tests ----
+from src.recommender import score_song, MAX_SCORE
+from src.dj_model import derive_facts, validate, plain_blurb
+
+SONG = {"title": "Sunrise City", "artist": "Neon Echo", "genre": "pop", "mood": "happy", "energy": 0.82}
+
+
+def test_score_never_exceeds_max_and_perfect_match_is_high():
+    full = {**SONG, "valence": 0.8, "acousticness": 0.2, "danceability": 0.8}
+    score, _ = score_song({"genre": "pop", "mood": "happy", "energy": 0.82}, full)
+    assert 0 < score <= MAX_SCORE
+
+
+def test_derive_facts():
+    assert derive_facts({"mood": "happy", "genre": "rock", "energy": 0.8}, SONG) == (True, False, "tight")
+    assert derive_facts({"mood": "sad", "energy": 0.2}, SONG)[2] == "far"
+
+
+def test_validate_accepts_faithful_blurb():
+    assert validate("Sunrise City by Neon Echo. Pure happy.", SONG, True, False) is None
+
+
+def test_validate_rejects_garbled_name_and_false_claims():
+    assert validate("Sunrize City by Neon Echo.", SONG, True, False) is not None
+    assert validate("", SONG, True, False) is not None
+    assert validate("Sunrise City by Neon Echo. That happy vibe?", SONG, False, False) is not None
+    assert validate("x" * 700, SONG, True, False) is not None
+
+
+def test_missing_model_falls_back_gracefully():
+    from src.dj_model import DJNova
+    dj = DJNova(model_dir="does/not/exist")
+    assert not dj.ready
+    text = dj.narrate({"mood": "happy", "genre": "pop", "energy": 0.8}, SONG, 1)
+    assert text == plain_blurb(SONG, True, True, "tight")
