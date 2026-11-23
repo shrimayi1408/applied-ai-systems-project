@@ -1,0 +1,39 @@
+classDiagram
+    class Song {
+        +int id
+        +str title
+        +str artist
+        +str genre
+        +str mood
+        +float energy
+        +float tempo_bpm
+        +float valence
+        +float danceability
+        +float acousticness
+    }
+
+    class UserProfile {
+        +str favorite_genre
+        +str favorite_mood
+        +float target_energy
+        +bool likes_acoustic
+    }
+
+    class Recommender {
+        +List~Song~ songs
+        +__init__(songs) void
+        +recommend(user, k) List~Song~
+        +explain_recommendation(user, song) str
+    }
+
+    class RecommenderFunctions {
+        <<module>>
+        +load_songs(csv_path) List~Dict~
+        +score_song(user_prefs, song) Tuple
+        +recommend_songs(user_prefs, songs, k) List~Tuple~
+    }
+
+    Recommender "1" --> "*" Song : holds
+    Recommender ..> UserProfile : takes as input
+    RecommenderFunctions ..> Song : reads songs as dicts
+    RecommenderFunctions ..> UserProfile : reads prefs as dict
