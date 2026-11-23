@@ -100,6 +100,17 @@ Held-out evaluation (`python -m src.evaluate_dj`, 40 blurbs for 4 songs never se
 | Missing model directory | App falls back, no crash | Pass |
 | Profile with no energy target | Blurb should not claim an energy fit | **Fail** (known, documented) |
 
+**Specialized behavior vs. baseline (same input, held-out song):**
+```
+INPUT: dj nova: genre=country | mood=relaxed | feel=laid-back | mood_match=yes | genre_match=no | energy_fit=tight | rank=3
+
+BASE  (google/flan-t5-small): dj nova has a rank of 3 and a mood match is not a mood match.
+TUNED (models/dj_nova):       Dropping the needle on Dust Road Sunday by Hollis Creek. A laid-back country
+                              track. Pure relaxed, exactly your speed. The energy sits right where you
+                              wanted it. This is DJ Nova, keeping the night warm.
+```
+The base output is incoherent and contradicts the input (`mood_match=yes`); the tuned output keeps the persona and states the facts correctly. Baseline caveat: the base model got the raw structured prompt with no few-shot examples, so it is a weak baseline.
+
 **Runtime log check:** a full CLI run over the 4 demo profiles (20 recommendations) logged 20 `model blurb accepted`, 0 rejections, 0 errors. Excerpt (`dj_nova.log`, git-ignored):
 ```
 INFO loaded fine-tuned model from models/dj_nova
