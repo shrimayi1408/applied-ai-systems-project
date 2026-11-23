@@ -51,6 +51,17 @@ pytest                             # unit tests
 ```
 Training is seeded; the first run downloads `google/flan-t5-small` (~300 MB). If `models/dj_nova` is absent, the app still runs using the fallback text and logs a warning.
 
+**Sample command executions (real output):**
+```
+$ python -m src.evaluate_dj
+google/flan-t5-small         faithful=0/40 (0%)  in-voice=0/40 (0%)
+models/dj_nova               faithful=40/40 (100%)  in-voice=40/40 (100%)
+
+$ pytest -q
+.......                                                                  [100%]
+7 passed in 1.39s
+```
+
 ## Sample interactions
 **1. Profile `genre=pop, mood=happy, energy=0.8`**
 ```
@@ -69,8 +80,11 @@ Training is seeded; the first run downloads `google/flan-t5-small` (~300 MB). If
 **3. Profile `genre=k-pop, mood=ecstatic` (unknown to the catalog)**
 ```
 #1  4Me 4Me  -  Malcolm Todd       Score: 0.00 / 11
-    DJ Nova: ... It's not quite the chill you ordered, but hear me out. Energy's close
-    enough to feel right. Turn it up, you've earned it.
+    DJ Nova: Don't touch that knob, it's 4Me 4Me by Malcolm Todd. A steady bedroom pop track.
+    It's not quite the chill you ordered, but hear me out. Energy's close enough to feel
+    right. Turn it up, you've earned it.
+    Why:
+      - no matching preferences (score 0.0)
 ```
 (Interaction 3 exposes a flaw: with no energy target, the "energy" sentence is not grounded. See Limitations in `model_card.md`.)
 
@@ -110,6 +124,14 @@ TUNED (models/dj_nova):       Dropping the needle on Dust Road Sunday by Hollis 
                               wanted it. This is DJ Nova, keeping the night warm.
 ```
 The base output is incoherent and contradicts the input (`mood_match=yes`); the tuned output keeps the persona and states the facts correctly. Baseline caveat: the base model got the raw structured prompt with no few-shot examples, so it is a weak baseline.
+
+**Guardrail demo (real run):** a deliberately garbled model output, as the first version produced for unseen songs, is rejected and replaced by the deterministic fallback:
+```
+model output : Dropping the needle on Storm Road Sunday by Helis Creek. Pure relaxed. This is DJ Nova.
+validate()   : missing title/artist (possible hallucination)
+shown instead: Dust Road Sunday by Hollis Creek (country, relaxed). Mood matches. Energy fit: tight.
+```
+In the app, this event is logged as `WARNING ... model blurb rejected (missing title/artist ...); using fallback`.
 
 **Runtime log check:** a full CLI run over the 4 demo profiles (20 recommendations) logged 20 `model blurb accepted`, 0 rejections, 0 errors. Excerpt (`dj_nova.log`, git-ignored):
 ```
