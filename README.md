@@ -82,6 +82,8 @@ Training is seeded; the first run downloads `google/flan-t5-small` (~300 MB). If
 - **Scorer stays rule-based.** Keeps recommendations explainable.
 
 ## Testing summary
+**In short:** 7/7 automated tests pass; on 40 held-out blurbs the fine-tuned model is 100% faithful and 100% in voice (base model: 0% / 0%). One known failure (no-energy-target profiles) is documented below. Reliability is measured three ways: automated tests (`pytest`), a held-out evaluation (`evaluate_dj.py`), and runtime logging/error handling (`dj_nova.log`).
+
 Held-out evaluation (`python -m src.evaluate_dj`, 40 blurbs for 4 songs never seen in training):
 
 | Model | Faithful (passes `validate`) | In DJ voice |
@@ -97,6 +99,14 @@ Held-out evaluation (`python -m src.evaluate_dj`, 40 blurbs for 4 songs never se
 | False "that happy vibe" claim on non-match | Rejected | Pass |
 | Missing model directory | App falls back, no crash | Pass |
 | Profile with no energy target | Blurb should not claim an energy fit | **Fail** (known, documented) |
+
+**Runtime log check:** a full CLI run over the 4 demo profiles (20 recommendations) logged 20 `model blurb accepted`, 0 rejections, 0 errors. Excerpt (`dj_nova.log`, git-ignored):
+```
+INFO loaded fine-tuned model from models/dj_nova
+INFO rank=1 'Sunrise City': model blurb accepted
+INFO rank=2 'Una Noche en Medellín': model blurb accepted
+```
+Rejections log as `WARNING ... model blurb rejected (<reason>); using fallback`, and exceptions as `ERROR` with a traceback; both fall back to `plain_blurb` so the CLI never crashes. Before the placeholder fix, the validator was catching the garbled names (the 50% row above).
 
 `pytest`: 7 passed. Learned: the metric that mattered was faithfulness, not fluency, and the weakness (copying unseen names) only showed up on held-out data. The "voice" metric is a sign-off phrase check, which is a weak proxy for tone quality.
 
